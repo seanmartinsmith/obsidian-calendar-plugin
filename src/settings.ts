@@ -17,6 +17,8 @@ export interface ISettings {
   weeklyNoteTemplate: string;
   weeklyNoteFolder: string;
 
+  entryCardClass: string;
+
   localeOverride: ILocaleOverride;
 }
 
@@ -40,6 +42,8 @@ export const defaultSettings = Object.freeze({
   weeklyNoteFormat: "",
   weeklyNoteTemplate: "",
   weeklyNoteFolder: "",
+
+  entryCardClass: "",
 
   localeOverride: "system-default",
 });
@@ -103,6 +107,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
       text: "Advanced Settings",
     });
     this.addLocaleOverrideSetting();
+    this.addEntryCardClassSetting();
   }
 
   addDotThresholdSetting(): void {
@@ -233,6 +238,20 @@ export class CalendarSettingsTab extends PluginSettingTab {
           this.plugin.writeOptions(() => ({
             localeOverride: value as ILocaleOverride,
           }));
+        });
+      });
+  }
+
+  addEntryCardClassSetting(): void {
+    new Setting(this.containerEl)
+      .setName("Entry CSS class")
+      .setDesc(
+        "Class name to add to each calendar entry for custom styling"
+      )
+      .addText((textfield) => {
+        textfield.setValue(this.plugin.options.entryCardClass);
+        textfield.onChange(async (value) => {
+          this.plugin.writeOptions(() => ({ entryCardClass: value }));
         });
       });
   }

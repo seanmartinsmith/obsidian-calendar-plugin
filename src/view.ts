@@ -6,7 +6,7 @@ import {
   getWeeklyNote,
   getWeeklyNoteSettings,
 } from "obsidian-daily-notes-interface";
-import { FileView, TFile, ItemView, WorkspaceLeaf } from "obsidian";
+import { FileView, TFile, ItemView, WorkspaceLeaf, setTooltip } from "obsidian";
 import { get } from "svelte/store";
 
 import { TRIGGER_ON_OPEN, VIEW_TYPE_CALENDAR } from "src/constants";
@@ -23,11 +23,13 @@ import {
   tasksSource,
   wordCountSource,
 } from "./ui/sources";
+import type { ICalendarSource } from "obsidian-calendar-ui";
 
 export default class CalendarView extends ItemView {
   private calendar: Calendar;
   private settings: ISettings;
   private isCtrlPressed = false;
+  private styleEl: HTMLStyleElement;
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
@@ -72,12 +74,14 @@ export default class CalendarView extends ItemView {
     });
 
     this.settings = null;
+    this.styleEl = null;
     settings.subscribe((val) => {
       this.settings = val;
 
       // Refresh the calendar if settings change
       if (this.calendar) {
         this.calendar.tick();
+        this.calendar.$set({ entryCardClass: val.entryCardClass });
       }
     });
   }
@@ -98,18 +102,31 @@ export default class CalendarView extends ItemView {
     if (this.calendar) {
       this.calendar.$destroy();
     }
+    if (this.styleEl) {
+      this.styleEl.remove();
+      this.styleEl = null;
+    }
     return Promise.resolve();
   }
 
   async onOpen(): Promise<void> {
-    // Integration point: external plugins can listen for `calendar:open`
-    // to feed in additional sources.
     const sources = [
       customTagsSource,
       streakSource,
       wordCountSource,
       tasksSource,
     ];
+    if (this.settings.entryCardClass) {
+      const cls = this.settings.entryCardClass;
+      sources.push({
+        async getDailyMetadata() {
+          return { classes: [cls] };
+        },
+        async getWeeklyMetadata() {
+          return { classes: [cls] };
+        },
+      } as ICalendarSource);
+    }
     this.app.workspace.trigger(TRIGGER_ON_OPEN, sources);
 
     this.calendar = new Calendar({
@@ -123,54 +140,80 @@ export default class CalendarView extends ItemView {
         onContextMenuDay: this.onContextMenuDay,
         onContextMenuWeek: this.onContextMenuWeek,
         sources,
+        entryCardClass: this.settings.entryCardClass,
       },
     });
+
+    if (!this.styleEl) {
+      this.styleEl = document.createElement("style");
+      this.styleEl.textContent = `
+.calendar-entries {
+  margin-top: 12px;
+  padding: 8px;
+  border-top: 1px solid var(--divider-color);
+}
+
+.calendar-entry {
+  padding: 6px 10px;
+  margin: 4px 0;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.calendar-entry:hover {
+  background: var(--background-modifier-hover);
+}`;
+      this.contentEl.appendChild(this.styleEl);
+    }
   }
 
-  onHoverDay(
-    date: Moment,
-    targetEl: EventTarget,
-    isMetaPressed: boolean
-  ): void {
-    if (!(isMetaPressed || this.isCtrlPressed)) {
-      return;
-    }
-    const { format } = getDailyNoteSettings();
+  onHoverDay(date: Moment, targetEl: EventTarget, isMetaPressed: boolean): void {
     const note = getDailyNote(date, get(dailyNotes));
-    this.app.workspace.trigger(
-      "link-hover",
-      this,
-      targetEl,
-      date.format(format),
-      note?.path
-    );
-  }
-
-  onHoverWeek(
-    date: Moment,
-    targetEl: EventTarget,
-    isMetaPressed: boolean
-  ): void {
-    if (!(isMetaPressed || this.isCtrlPressed)) {
+    if (!note || !(isMetaPressed || this.isCtrlPressed)) {
       return;
     }
+
+    if (isMetaPressed) {
+      const { format } = getDailyNoteSettings();
+      this.app.workspace.trigger(
+        "link-hover",
+        this,
+        targetEl,
+        date.format(format),
+        note.path
+      );
+      return;
+    }
+
+    this.showNotePreview(targetEl as HTMLElement, note);
+  }
+
+  onHoverWeek(date: Moment, targetEl: EventTarget, isMetaPressed: boolean): void {
     const note = getWeeklyNote(date, get(weeklyNotes));
-    const { format } = getWeeklyNoteSettings();
-    this.app.workspace.trigger(
-      "link-hover",
-      this,
-      targetEl,
-      date.format(format),
-      note?.path
-    );
+    if (!note || !(isMetaPressed || this.isCtrlPressed)) {
+      return;
+    }
+
+    if (isMetaPressed) {
+      const { format } = getWeeklyNoteSettings();
+      this.app.workspace.trigger(
+        "link-hover",
+        this,
+        targetEl,
+        date.format(format),
+        note.path
+      );
+      return;
+    }
+
+    this.showNotePreview(targetEl as HTMLElement, note);
   }
 
   private onContextMenuDay(date: Moment, event: MouseEvent): void {
     const note = getDailyNote(date, get(dailyNotes));
-    if (!note) {
-      // If no file exists for a given day, show nothing.
-      return;
-    }
+    if (!note) return;
     showFileMenu(this.app, note, {
       x: event.pageX,
       y: event.pageY,
@@ -179,10 +222,7 @@ export default class CalendarView extends ItemView {
 
   private onContextMenuWeek(date: Moment, event: MouseEvent): void {
     const note = getWeeklyNote(date, get(weeklyNotes));
-    if (!note) {
-      // If no file exists for a given day, show nothing.
-      return;
-    }
+    if (!note) return;
     showFileMenu(this.app, note, {
       x: event.pageX,
       y: event.pageY,
@@ -251,14 +291,12 @@ export default class CalendarView extends ItemView {
     const { activeLeaf } = this.app.workspace;
 
     if (activeLeaf.view instanceof FileView) {
-      // Check to see if the active note is a daily-note
       let date = getDateFromFile(activeLeaf.view.file, "day");
       if (date) {
         this.calendar.$set({ displayedMonth: date });
         return;
       }
 
-      // Check to see if the active note is a weekly-note
       const { format } = getWeeklyNoteSettings();
       date = moment(activeLeaf.view.file.basename, format, true);
       if (date.isValid()) {
@@ -268,19 +306,14 @@ export default class CalendarView extends ItemView {
     }
   }
 
-  async openOrCreateWeeklyNote(
-    date: Moment,
-    inNewSplit: boolean
-  ): Promise<void> {
+  async openOrCreateWeeklyNote(date: Moment, inNewSplit: boolean): Promise<void> {
     const { workspace } = this.app;
     const openInSplit = inNewSplit || this.isCtrlPressed;
 
     const startOfWeek = date.clone().startOf("week");
-
     const existingFile = getWeeklyNote(date, get(weeklyNotes));
 
     if (!existingFile) {
-      // File doesn't exist
       tryToCreateWeeklyNote(startOfWeek, openInSplit, this.settings, (file) => {
         activeFile.setFile(file);
       });
@@ -293,36 +326,57 @@ export default class CalendarView extends ItemView {
     await leaf.openFile(existingFile);
 
     activeFile.setFile(existingFile);
-    workspace.setActiveLeaf(leaf, true, true)
+    workspace.setActiveLeaf(leaf, true, true);
   }
 
-  async openOrCreateDailyNote(
-    date: Moment,
-    inNewSplit: boolean
-  ): Promise<void> {
+  async openOrCreateDailyNote(date: Moment, inNewSplit: boolean): Promise<void> {
     const { workspace } = this.app;
     const openInSplit = inNewSplit || this.isCtrlPressed;
     const existingFile = getDailyNote(date, get(dailyNotes));
+
+    const allFiles = this.app.vault.getMarkdownFiles();
+    const targetDateStr = date.format("YYYYMMDD");
+    const matchingFiles = allFiles.filter((f) =>
+      f.basename.startsWith(targetDateStr)
+    );
+
+    const calendarEl =
+      ((this as any).contentEl.querySelector(".calendar-entries") ||
+        document.createElement("div"));
+    calendarEl.className = "calendar-entries";
+    calendarEl.innerHTML = "";
+
+    matchingFiles.forEach((file) => {
+      const item = document.createElement("div");
+      item.textContent = file.basename;
+      item.className = "calendar-entry";
+      item.onclick = () => {
+        this.app.workspace.getLeaf().openFile(file);
+      };
+      calendarEl.appendChild(item);
+    });
+
+    (this as any).contentEl.appendChild(calendarEl);
+
     if (!existingFile) {
-      // File doesn't exist
-      tryToCreateDailyNote(
-        date,
-        openInSplit,
-        this.settings,
-        (dailyNote: TFile) => {
-          activeFile.setFile(dailyNote);
-        }
-      );
+      tryToCreateDailyNote(date, openInSplit, this.settings, (dailyNote: TFile) => {
+        activeFile.setFile(dailyNote);
+      });
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mode = (this.app.vault as any).getConfig("defaultViewMode");
     const leaf = openInSplit
       ? workspace.splitActiveLeaf()
       : workspace.getUnpinnedLeaf();
-    await leaf.openFile(existingFile, { active : true, mode });
+    await leaf.openFile(existingFile, { active: true, mode });
 
     activeFile.setFile(existingFile);
+  }
+
+  private async showNotePreview(el: HTMLElement, note: TFile): Promise<void> {
+    const text = await this.app.vault.cachedRead(note);
+    const preview = text.slice(0, 200);
+    setTooltip(el, preview, { placement: "right" });
   }
 }
