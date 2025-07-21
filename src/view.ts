@@ -6,7 +6,7 @@ import {
   getWeeklyNote,
   getWeeklyNoteSettings,
 } from "obsidian-daily-notes-interface";
-import { FileView, TFile, ItemView, WorkspaceLeaf } from "obsidian";
+import { FileView, TFile, ItemView, WorkspaceLeaf, setTooltip } from "obsidian";
 import { get } from "svelte/store";
 
 import { TRIGGER_ON_OPEN, VIEW_TYPE_CALENDAR } from "src/constants";
@@ -119,18 +119,24 @@ export default class CalendarView extends ItemView {
     targetEl: EventTarget,
     isMetaPressed: boolean
   ): void {
-    if (!isMetaPressed) {
+    const note = getDailyNote(date, get(dailyNotes));
+    if (!note) {
       return;
     }
-    const { format } = getDailyNoteSettings();
-    const note = getDailyNote(date, get(dailyNotes));
-    this.app.workspace.trigger(
-      "link-hover",
-      this,
-      targetEl,
-      date.format(format),
-      note?.path
-    );
+
+    if (isMetaPressed) {
+      const { format } = getDailyNoteSettings();
+      this.app.workspace.trigger(
+        "link-hover",
+        this,
+        targetEl,
+        date.format(format),
+        note.path
+      );
+      return;
+    }
+
+    this.showNotePreview(targetEl as HTMLElement, note);
   }
 
   onHoverWeek(
@@ -138,18 +144,24 @@ export default class CalendarView extends ItemView {
     targetEl: EventTarget,
     isMetaPressed: boolean
   ): void {
-    if (!isMetaPressed) {
+    const note = getWeeklyNote(date, get(weeklyNotes));
+    if (!note) {
       return;
     }
-    const note = getWeeklyNote(date, get(weeklyNotes));
-    const { format } = getWeeklyNoteSettings();
-    this.app.workspace.trigger(
-      "link-hover",
-      this,
-      targetEl,
-      date.format(format),
-      note?.path
-    );
+
+    if (isMetaPressed) {
+      const { format } = getWeeklyNoteSettings();
+      this.app.workspace.trigger(
+        "link-hover",
+        this,
+        targetEl,
+        date.format(format),
+        note.path
+      );
+      return;
+    }
+
+    this.showNotePreview(targetEl as HTMLElement, note);
   }
 
   private onContextMenuDay(date: Moment, event: MouseEvent): void {
@@ -309,5 +321,11 @@ export default class CalendarView extends ItemView {
     await leaf.openFile(existingFile, { active : true, mode });
 
     activeFile.setFile(existingFile);
+  }
+
+  private async showNotePreview(el: HTMLElement, note: TFile): Promise<void> {
+    const text = await this.app.vault.cachedRead(note);
+    const preview = text.slice(0, 200);
+    setTooltip(el, preview, { placement: "right" });
   }
 }
