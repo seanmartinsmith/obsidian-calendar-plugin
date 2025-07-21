@@ -27,6 +27,7 @@ import {
 export default class CalendarView extends ItemView {
   private calendar: Calendar;
   private settings: ISettings;
+  private styleEl: HTMLStyleElement;
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
@@ -59,6 +60,7 @@ export default class CalendarView extends ItemView {
     this.registerEvent(this.app.workspace.on("file-open", this.onFileOpen));
 
     this.settings = null;
+    this.styleEl = null;
     settings.subscribe((val) => {
       this.settings = val;
 
@@ -84,6 +86,10 @@ export default class CalendarView extends ItemView {
   onClose(): Promise<void> {
     if (this.calendar) {
       this.calendar.$destroy();
+    }
+    if (this.styleEl) {
+      this.styleEl.remove();
+      this.styleEl = null;
     }
     return Promise.resolve();
   }
@@ -112,6 +118,30 @@ export default class CalendarView extends ItemView {
         sources,
       },
     });
+
+    if (!this.styleEl) {
+      this.styleEl = document.createElement("style");
+      this.styleEl.textContent = `
+.calendar-entries {
+  margin-top: 12px;
+  padding: 8px;
+  border-top: 1px solid var(--divider-color);
+}
+
+.calendar-entry {
+  padding: 6px 10px;
+  margin: 4px 0;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.calendar-entry:hover {
+  background: var(--background-modifier-hover);
+}`;
+      this.contentEl.appendChild(this.styleEl);
+    }
   }
 
   onHoverDay(
