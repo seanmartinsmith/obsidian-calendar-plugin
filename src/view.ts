@@ -28,6 +28,7 @@ import type { ICalendarSource } from "obsidian-calendar-ui";
 export default class CalendarView extends ItemView {
   private calendar: Calendar;
   private settings: ISettings;
+  private isCtrlPressed = false;
   private styleEl: HTMLStyleElement;
 
   constructor(leaf: WorkspaceLeaf) {
@@ -59,6 +60,18 @@ export default class CalendarView extends ItemView {
     this.registerEvent(this.app.vault.on("delete", this.onFileDeleted));
     this.registerEvent(this.app.vault.on("modify", this.onFileModified));
     this.registerEvent(this.app.workspace.on("file-open", this.onFileOpen));
+
+    this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
+      if (evt.key === "Control") {
+        this.isCtrlPressed = true;
+      }
+    });
+
+    this.registerDomEvent(document, "keyup", (evt: KeyboardEvent) => {
+      if (evt.key === "Control") {
+        this.isCtrlPressed = false;
+      }
+    });
 
     this.settings = null;
     this.styleEl = null;
@@ -97,8 +110,6 @@ export default class CalendarView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    // Integration point: external plugins can listen for `calendar:open`
-    // to feed in additional sources.
     const sources = [
       customTagsSource,
       streakSource,
@@ -158,13 +169,9 @@ export default class CalendarView extends ItemView {
     }
   }
 
-  onHoverDay(
-    date: Moment,
-    targetEl: EventTarget,
-    isMetaPressed: boolean
-  ): void {
+  onHoverDay(date: Moment, targetEl: EventTarget, isMetaPressed: boolean): void {
     const note = getDailyNote(date, get(dailyNotes));
-    if (!note) {
+    if (!note || !(isMetaPressed || this.isCtrlPressed)) {
       return;
     }
 
@@ -183,13 +190,9 @@ export default class CalendarView extends ItemView {
     this.showNotePreview(targetEl as HTMLElement, note);
   }
 
-  onHoverWeek(
-    date: Moment,
-    targetEl: EventTarget,
-    isMetaPressed: boolean
-  ): void {
+  onHoverWeek(date: Moment, targetEl: EventTarget, isMetaPressed: boolean): void {
     const note = getWeeklyNote(date, get(weeklyNotes));
-    if (!note) {
+    if (!note || !(isMetaPressed || this.isCtrlPressed)) {
       return;
     }
 
@@ -210,10 +213,7 @@ export default class CalendarView extends ItemView {
 
   private onContextMenuDay(date: Moment, event: MouseEvent): void {
     const note = getDailyNote(date, get(dailyNotes));
-    if (!note) {
-      // If no file exists for a given day, show nothing.
-      return;
-    }
+    if (!note) return;
     showFileMenu(this.app, note, {
       x: event.pageX,
       y: event.pageY,
@@ -222,10 +222,7 @@ export default class CalendarView extends ItemView {
 
   private onContextMenuWeek(date: Moment, event: MouseEvent): void {
     const note = getWeeklyNote(date, get(weeklyNotes));
-    if (!note) {
-      // If no file exists for a given day, show nothing.
-      return;
-    }
+    if (!note) return;
     showFileMenu(this.app, note, {
       x: event.pageX,
       y: event.pageY,
@@ -294,14 +291,12 @@ export default class CalendarView extends ItemView {
     const { activeLeaf } = this.app.workspace;
 
     if (activeLeaf.view instanceof FileView) {
-      // Check to see if the active note is a daily-note
       let date = getDateFromFile(activeLeaf.view.file, "day");
       if (date) {
         this.calendar.$set({ displayedMonth: date });
         return;
       }
 
-      // Check to see if the active note is a weekly-note
       const { format } = getWeeklyNoteSettings();
       date = moment(activeLeaf.view.file.basename, format, true);
       if (date.isValid()) {
@@ -311,38 +306,32 @@ export default class CalendarView extends ItemView {
     }
   }
 
-  async openOrCreateWeeklyNote(
-    date: Moment,
-    inNewSplit: boolean
-  ): Promise<void> {
+  async openOrCreateWeeklyNote(date: Moment, inNewSplit: boolean): Promise<void> {
     const { workspace } = this.app;
+    const openInSplit = inNewSplit || this.isCtrlPressed;
 
     const startOfWeek = date.clone().startOf("week");
-
     const existingFile = getWeeklyNote(date, get(weeklyNotes));
 
     if (!existingFile) {
-      // File doesn't exist
-      tryToCreateWeeklyNote(startOfWeek, inNewSplit, this.settings, (file) => {
+      tryToCreateWeeklyNote(startOfWeek, openInSplit, this.settings, (file) => {
         activeFile.setFile(file);
       });
       return;
     }
 
-    const leaf = inNewSplit
+    const leaf = openInSplit
       ? workspace.splitActiveLeaf()
       : workspace.getUnpinnedLeaf();
     await leaf.openFile(existingFile);
 
     activeFile.setFile(existingFile);
-    workspace.setActiveLeaf(leaf, true, true)
+    workspace.setActiveLeaf(leaf, true, true);
   }
 
-  async openOrCreateDailyNote(
-    date: Moment,
-    inNewSplit: boolean
-  ): Promise<void> {
+  async openOrCreateDailyNote(date: Moment, inNewSplit: boolean): Promise<void> {
     const { workspace } = this.app;
+    const openInSplit = inNewSplit || this.isCtrlPressed;
     const existingFile = getDailyNote(date, get(dailyNotes));
 
     const allFiles = this.app.vault.getMarkdownFiles();
@@ -352,7 +341,6 @@ export default class CalendarView extends ItemView {
     );
 
     const calendarEl =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ((this as any).contentEl.querySelector(".calendar-entries") ||
         document.createElement("div"));
     calendarEl.className = "calendar-entries";
@@ -368,27 +356,20 @@ export default class CalendarView extends ItemView {
       calendarEl.appendChild(item);
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this as any).contentEl.appendChild(calendarEl);
+
     if (!existingFile) {
-      // File doesn't exist
-      tryToCreateDailyNote(
-        date,
-        inNewSplit,
-        this.settings,
-        (dailyNote: TFile) => {
-          activeFile.setFile(dailyNote);
-        }
-      );
+      tryToCreateDailyNote(date, openInSplit, this.settings, (dailyNote: TFile) => {
+        activeFile.setFile(dailyNote);
+      });
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mode = (this.app.vault as any).getConfig("defaultViewMode");
-    const leaf = inNewSplit
+    const leaf = openInSplit
       ? workspace.splitActiveLeaf()
       : workspace.getUnpinnedLeaf();
-    await leaf.openFile(existingFile, { active : true, mode });
+    await leaf.openFile(existingFile, { active: true, mode });
 
     activeFile.setFile(existingFile);
   }
