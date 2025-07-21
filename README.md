@@ -23,6 +23,7 @@ The plugin reads your Daily Note settings to know your date format, your daily n
 - **Words per Dot [default: 250]**: Starting in version 1.3, dots reflect the word count of your files. By default, each dot represents 250 words, you can change that value to whatever you want. Set this to `0` to disable the word count entirely. **Note:** There is a max of 5 dots so that the view doesn't get too big!
 - **Confirm before creating new note [default: on]**: If you don't like that a modal prompts you before creating a new daily note, you can turn it off.
 - **Show Week Number [default: off]**: Enable this to add a new column to the calendar view showing the [Week Number](https://en.wikipedia.org/wiki/Week#Week_numbering). Clicking on these cells will open your **weekly note**.
+- **Entry CSS class [default: empty]**: Add this class to each calendar entry (days and week numbers) for easier custom styling.
 
 ## Customization
 
@@ -59,6 +60,16 @@ In addition to the CSS Variables, there are some classes you can override for fu
 ```
 
 > **Note:** It's especially important when overriding the classes to prefix them with `#calendar-container` to avoid any unexpected changes within Obsidian!
+
+### Custom entry class
+
+You can specify a custom class in the plugin settings. The class will be added to every day cell and week number entry, making it easy to style them all at once.
+
+```css
+#calendar-container .my-calendar-entry {
+  /* your styles */
+}
+```
 
 ### Caution to Theme Creators
 

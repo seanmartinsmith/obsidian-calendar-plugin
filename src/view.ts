@@ -23,6 +23,7 @@ import {
   tasksSource,
   wordCountSource,
 } from "./ui/sources";
+import type { ICalendarSource } from "obsidian-calendar-ui";
 
 export default class CalendarView extends ItemView {
   private calendar: Calendar;
@@ -65,6 +66,7 @@ export default class CalendarView extends ItemView {
       // Refresh the calendar if settings change
       if (this.calendar) {
         this.calendar.tick();
+        this.calendar.$set({ entryCardClass: val.entryCardClass });
       }
     });
   }
@@ -97,6 +99,17 @@ export default class CalendarView extends ItemView {
       wordCountSource,
       tasksSource,
     ];
+    if (this.settings.entryCardClass) {
+      const cls = this.settings.entryCardClass;
+      sources.push({
+        async getDailyMetadata() {
+          return { classes: [cls] };
+        },
+        async getWeeklyMetadata() {
+          return { classes: [cls] };
+        },
+      } as ICalendarSource);
+    }
     this.app.workspace.trigger(TRIGGER_ON_OPEN, sources);
 
     this.calendar = new Calendar({
@@ -110,6 +123,7 @@ export default class CalendarView extends ItemView {
         onContextMenuDay: this.onContextMenuDay,
         onContextMenuWeek: this.onContextMenuWeek,
         sources,
+        entryCardClass: this.settings.entryCardClass,
       },
     });
   }

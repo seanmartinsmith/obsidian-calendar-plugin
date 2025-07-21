@@ -18,12 +18,30 @@
 
   export let displayedMonth: Moment = today;
   export let sources: ICalendarSource[];
+  export let entryCardClass: string = "";
   export let onHoverDay: (date: Moment, targetEl: EventTarget) => boolean;
   export let onHoverWeek: (date: Moment, targetEl: EventTarget) => boolean;
   export let onClickDay: (date: Moment, isMetaPressed: boolean) => boolean;
   export let onClickWeek: (date: Moment, isMetaPressed: boolean) => boolean;
   export let onContextMenuDay: (date: Moment, event: MouseEvent) => boolean;
   export let onContextMenuWeek: (date: Moment, event: MouseEvent) => boolean;
+
+  let computedSources: ICalendarSource[];
+  $: {
+    if (entryCardClass) {
+      const classSource: ICalendarSource = {
+        async getDailyMetadata() {
+          return { classes: [entryCardClass] };
+        },
+        async getWeeklyMetadata() {
+          return { classes: [entryCardClass] };
+        },
+      };
+      computedSources = [...sources, classSource];
+    } else {
+      computedSources = sources;
+    }
+  }
 
   export function tick() {
     today = window.moment();
@@ -53,8 +71,9 @@
   });
 </script>
 
+
 <CalendarBase
-  {sources}
+  sources={computedSources}
   {today}
   {onHoverDay}
   {onHoverWeek}
