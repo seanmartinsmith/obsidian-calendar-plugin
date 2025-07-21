@@ -288,6 +288,32 @@ export default class CalendarView extends ItemView {
   ): Promise<void> {
     const { workspace } = this.app;
     const existingFile = getDailyNote(date, get(dailyNotes));
+
+    const allFiles = this.app.vault.getMarkdownFiles();
+    const targetDateStr = date.format("YYYYMMDD");
+    const matchingFiles = allFiles.filter((f) =>
+      f.basename.startsWith(targetDateStr)
+    );
+
+    const calendarEl =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((this as any).contentEl.querySelector(".calendar-entries") ||
+        document.createElement("div"));
+    calendarEl.className = "calendar-entries";
+    calendarEl.innerHTML = "";
+
+    matchingFiles.forEach((file) => {
+      const item = document.createElement("div");
+      item.textContent = file.basename;
+      item.className = "calendar-entry";
+      item.onclick = () => {
+        this.app.workspace.getLeaf().openFile(file);
+      };
+      calendarEl.appendChild(item);
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this as any).contentEl.appendChild(calendarEl);
     if (!existingFile) {
       // File doesn't exist
       tryToCreateDailyNote(
