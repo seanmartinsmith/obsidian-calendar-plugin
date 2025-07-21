@@ -27,6 +27,7 @@ import {
 export default class CalendarView extends ItemView {
   private calendar: Calendar;
   private settings: ISettings;
+  private isCtrlPressed = false;
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
@@ -57,6 +58,18 @@ export default class CalendarView extends ItemView {
     this.registerEvent(this.app.vault.on("delete", this.onFileDeleted));
     this.registerEvent(this.app.vault.on("modify", this.onFileModified));
     this.registerEvent(this.app.workspace.on("file-open", this.onFileOpen));
+
+    this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
+      if (evt.key === "Control") {
+        this.isCtrlPressed = true;
+      }
+    });
+
+    this.registerDomEvent(document, "keyup", (evt: KeyboardEvent) => {
+      if (evt.key === "Control") {
+        this.isCtrlPressed = false;
+      }
+    });
 
     this.settings = null;
     settings.subscribe((val) => {
@@ -119,7 +132,7 @@ export default class CalendarView extends ItemView {
     targetEl: EventTarget,
     isMetaPressed: boolean
   ): void {
-    if (!isMetaPressed) {
+    if (!(isMetaPressed || this.isCtrlPressed)) {
       return;
     }
     const { format } = getDailyNoteSettings();
@@ -138,7 +151,7 @@ export default class CalendarView extends ItemView {
     targetEl: EventTarget,
     isMetaPressed: boolean
   ): void {
-    if (!isMetaPressed) {
+    if (!(isMetaPressed || this.isCtrlPressed)) {
       return;
     }
     const note = getWeeklyNote(date, get(weeklyNotes));
@@ -260,6 +273,7 @@ export default class CalendarView extends ItemView {
     inNewSplit: boolean
   ): Promise<void> {
     const { workspace } = this.app;
+    const openInSplit = inNewSplit || this.isCtrlPressed;
 
     const startOfWeek = date.clone().startOf("week");
 
@@ -267,13 +281,13 @@ export default class CalendarView extends ItemView {
 
     if (!existingFile) {
       // File doesn't exist
-      tryToCreateWeeklyNote(startOfWeek, inNewSplit, this.settings, (file) => {
+      tryToCreateWeeklyNote(startOfWeek, openInSplit, this.settings, (file) => {
         activeFile.setFile(file);
       });
       return;
     }
 
-    const leaf = inNewSplit
+    const leaf = openInSplit
       ? workspace.splitActiveLeaf()
       : workspace.getUnpinnedLeaf();
     await leaf.openFile(existingFile);
@@ -287,12 +301,13 @@ export default class CalendarView extends ItemView {
     inNewSplit: boolean
   ): Promise<void> {
     const { workspace } = this.app;
+    const openInSplit = inNewSplit || this.isCtrlPressed;
     const existingFile = getDailyNote(date, get(dailyNotes));
     if (!existingFile) {
       // File doesn't exist
       tryToCreateDailyNote(
         date,
-        inNewSplit,
+        openInSplit,
         this.settings,
         (dailyNote: TFile) => {
           activeFile.setFile(dailyNote);
@@ -303,7 +318,7 @@ export default class CalendarView extends ItemView {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mode = (this.app.vault as any).getConfig("defaultViewMode");
-    const leaf = inNewSplit
+    const leaf = openInSplit
       ? workspace.splitActiveLeaf()
       : workspace.getUnpinnedLeaf();
     await leaf.openFile(existingFile, { active : true, mode });
