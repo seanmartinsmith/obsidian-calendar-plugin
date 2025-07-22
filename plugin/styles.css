@@ -1,0 +1,21 @@
+.settings-banner {
+  background-color: var(--background-secondary-alt);
+  border-radius: 4px;
+  margin-bottom: 2em;
+  padding: 1.5em;
+  text-align: left;
+}
+
+.settings-banner h4 {
+  margin: 0;
+}
+
+.calendar-dot-blue {
+  background: #3b82f6 !important; /* blue-500 */
+}
+.calendar-dot-yellow {
+  background: #facc15 !important; /* yellow-400 */
+}
+.calendar-dot-red {
+  background: #ef4444 !important; /* red-500 */
+}
